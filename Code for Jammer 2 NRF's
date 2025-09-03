@@ -1,0 +1,77 @@
+#include <SPI.h>
+#include "RF24.h"
+#include "esp_bt.h"
+#include "esp_wifi.h"
+
+// SPI objects
+SPIClass* sp = nullptr;  // VSPI
+SPIClass* hp = nullptr;  // HSPI
+
+// Two NRF24 radios
+RF24 radio(16, 15, 16000000);   // CE, CSN on HSPI
+RF24 radio1(22, 21, 16000000);  // CE, CSN on VSPI
+
+// Channel control
+int ch = 2;
+int ch1 = 10;
+bool flag = false;
+bool flag1 = false;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Disable Bluetooth and WiFi
+  esp_bt_controller_disable();
+  esp_wifi_disconnect();
+  esp_wifi_stop();
+  esp_wifi_deinit();
+
+  // Initialize HSPI
+  hp = new SPIClass(HSPI);
+  hp->begin(14, 12, 13);  // SCK, MISO, MOSI
+  if (radio.begin(hp)) {
+    Serial.println("HSPI radio OK");
+    setupRadio(radio, ch);
+  } else {
+    Serial.println("HSPI radio FAIL");
+  }
+
+  // Initialize VSPI
+  sp = new SPIClass(VSPI);
+  sp->begin(18, 19, 23);  // SCK, MISO, MOSI
+  if (radio1.begin(sp)) {
+    Serial.println("VSPI radio OK");
+    setupRadio(radio1, ch1);
+  } else {
+    Serial.println("VSPI radio FAIL");
+  }
+}
+
+void setupRadio(RF24& r, int ch) {
+  r.setAutoAck(false);
+  r.stopListening();
+  r.setRetries(0, 0);
+  r.setPALevel(RF24_PA_MAX, true);
+  r.setDataRate(RF24_2MBPS);
+  r.setCRCLength(RF24_CRC_DISABLED);
+  r.startConstCarrier(RF24_PA_MAX, ch);  // Constant carrier for jamming
+}
+
+void loop() {
+  // Sweep channels
+  sweep(radio, ch, flag);
+  sweep(radio1, ch1, flag1);
+  delayMicroseconds(50);  // Fast sweep
+}
+
+void sweep(RF24& r, int& ch, bool& direction) {
+  if (direction)
+    ch -= 2;
+  else
+    ch += 2;
+
+  if (ch >= 79) direction = true;
+  if (ch <= 2) direction = false;
+
+  r.setChannel(ch);
+}
